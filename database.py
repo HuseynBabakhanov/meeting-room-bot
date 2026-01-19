@@ -1,513 +1,204 @@
 """
-Модуль для работы с базой данных (SQLite локально, PostgreSQL на сервере)
+Модуль для работы с данными бронирований (JSON-based storage)
 Управление бронированиями переговорной комнаты
 """
 
-import sqlite3
-import psycopg2
-import psycopg2.extras
+import json
+import os
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-import logging
-import os
-from urllib.parse import urlparse, parse_qs
+import threading
 
 logger = logging.getLogger(__name__)
 
 
 class Database:
-    """Класс для работы с базой данных бронирований"""
+    """Класс для работы с данными бронирований через JSON файлы"""
     
-    def __init__(self, db_name: str = "meeting_room.db"):
-        """Инициализация базы данных"""
-        db_url = os.getenv("DATABASE_URL")
-        self.db_name = db_name
-        self.is_postgres = db_url is not None and db_url.strip() != ""
+    def __init__(self, data_dir: str = "data"):
+        """Инициализация хранилища"""
+        self.data_dir = data_dir
+        self.bookings_file = os.path.join(data_dir, "bookings.json")
+        self.users_file = os.path.join(data_dir, "users.json")
+        self.booking_id_file = os.path.join(data_dir, "booking_id.json")
+        self.lock = threading.Lock()  # Для безопасного доступа из разных потоков
         
-        if self.is_postgres:
-            # Преобразуем DigitalOcean URL формат в psycopg2 совместимый
-            self.db_url = self._convert_db_url(db_url)
-            logger.info(f"PostgreSQL режим: подключение к БД")
-        else:
-            self.db_url = None
-            logger.info(f"SQLite режим: использую локальную БД {db_name}")
-            
+        # Создаем директорию если её нет
+        os.makedirs(data_dir, exist_ok=True)
+        
+        logger.info("📁 JSON режим: хранение данных в файлах")
         self.init_db()
     
-    def _convert_db_url(self, url: str) -> str:
-        """Преобразуем DigitalOcean URL в формат для psycopg2"""
-        if not url or url.strip() == "":
-            logger.error("DATABASE_URL пуста!")
-            return None
-            
-        # Если URL уже содержит 'postgresql://', используем его как есть
-        if url.startswith('postgresql://'):
-            # Заменяем 'username=' на 'user=' если есть
-            url = url.replace('username=', 'user=')
-            logger.info("DATABASE_URL успешно преобразована")
-            return url
-        # Если формат неправильный, логируем для отладки
-        logger.warning(f"Необычный формат DATABASE_URL: {url[:50]}...")
-        return url
-    
-    def get_connection(self):
-        """Получить соединение с базой данных"""
-        if self.is_postgres:
-            if not self.db_url:
-                logger.error("DATABASE_URL не установлена, переходим на SQLite")
-                self.is_postgres = False
-                conn = sqlite3.connect(self.db_name)
-                conn.row_factory = sqlite3.Row
-                return conn
-            
-            try:
-                conn = psycopg2.connect(self.db_url)
-                logger.info("Успешное подключение к PostgreSQL")
-                return conn
-            except Exception as e:
-                logger.error(f"Ошибка подключения к PostgreSQL: {e}")
-                logger.error(f"DATABASE_URL формат: {self.db_url[:50] if self.db_url else 'None'}...")
-                raise
-        else:
-            conn = sqlite3.connect(self.db_name)
-            conn.row_factory = sqlite3.Row
-            return conn
-    
     def init_db(self):
-        """Инициализация структуры базы данных"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        if self.is_postgres:
-            # PostgreSQL синтаксис
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    user_name TEXT NOT NULL,
-                    start_time TIMESTAMP NOT NULL,
-                    end_time TIMESTAMP NOT NULL,
-                    description TEXT NOT NULL,
-                    created_at TIMESTAMP NOT NULL,
-                    status TEXT DEFAULT 'active'
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id BIGINT PRIMARY KEY,
-                    language TEXT DEFAULT 'ru',
-                    first_name TEXT,
-                    last_name TEXT,
-                    username TEXT,
-                    updated_at TIMESTAMP
-                )
-            ''')
-            
-            # Индексы для PostgreSQL
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_start_time 
-                ON bookings(start_time)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_user_id 
-                ON bookings(user_id)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_status 
-                ON bookings(status)
-            ''')
-        else:
-            # SQLite синтаксис
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    user_name TEXT NOT NULL,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    status TEXT DEFAULT 'active'
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    language TEXT DEFAULT 'ru',
-                    first_name TEXT,
-                    last_name TEXT,
-                    username TEXT,
-                    updated_at TEXT
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_start_time 
-                ON bookings(start_time)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_user_id 
-                ON bookings(user_id)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_status 
-            ON bookings(status)
-        ''')
-        
-        conn.commit()
-        conn.close()
-        
-        logger.info("База данных инициализирована")
-    
-    def create_booking(
-        self,
-        user_id: int,
-        user_name: str,
-        start_time: str,
-        end_time: str,
-        description: str
-    ) -> bool:
-        """
-        Создать новое бронирование
-        
-        Args:
-            user_id: ID пользователя Telegram
-            user_name: Имя пользователя
-            start_time: Время начала (ISO format)
-            end_time: Время окончания (ISO format)
-            description: Описание встречи
-            
-        Returns:
-            True если бронирование создано успешно
-        """
+        """Инициализация файлов данных"""
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
+            # Инициализируем файлы если их нет
+            if not os.path.exists(self.bookings_file):
+                self._write_json(self.bookings_file, [])
+                logger.info(f"✅ Создан файл бронирований: {self.bookings_file}")
             
-            created_at = datetime.now().isoformat()
+            if not os.path.exists(self.users_file):
+                self._write_json(self.users_file, {})
+                logger.info(f"✅ Создан файл пользователей: {self.users_file}")
             
-            cursor.execute('''
-                INSERT INTO bookings 
-                (user_id, user_name, start_time, end_time, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, user_name, start_time, end_time, description, created_at))
+            if not os.path.exists(self.booking_id_file):
+                self._write_json(self.booking_id_file, {"next_id": 1})
+                logger.info(f"✅ Создан счетчик ID: {self.booking_id_file}")
             
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Создано бронирование: {user_name} с {start_time} до {end_time}")
-            return True
-            
+            logger.info("✅ Инициализация завершена успешно")
         except Exception as e:
-            logger.error(f"Ошибка при создании бронирования: {e}")
+            logger.error(f"❌ Ошибка инициализации: {e}")
+            raise
+    
+    def _read_json(self, filepath: str):
+        """Читать JSON файл потокобезопасно"""
+        with self.lock:
+            try:
+                if os.path.exists(filepath):
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                return {} if 'users' in filepath else []
+            except Exception as e:
+                logger.error(f"Ошибка чтения {filepath}: {e}")
+                return {} if 'users' in filepath else []
+    
+    def _write_json(self, filepath: str, data):
+        """Писать JSON файл потокобезопасно"""
+        with self.lock:
+            try:
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.error(f"Ошибка записи {filepath}: {e}")
+    
+    def get_user_language(self, user_id: int) -> Optional[str]:
+        """Получить язык пользователя"""
+        users = self._read_json(self.users_file)
+        user = users.get(str(user_id))
+        return user.get('language') if user else None
+    
+    def set_user_language(self, user_id: int, language: str, first_name: str = None, 
+                         last_name: str = None, username: str = None):
+        """Установить язык пользователя"""
+        users = self._read_json(self.users_file)
+        users[str(user_id)] = {
+            'language': language,
+            'first_name': first_name,
+            'last_name': last_name,
+            'username': username,
+            'updated_at': datetime.now().isoformat()
+        }
+        self._write_json(self.users_file, users)
+        logger.info(f"Пользователь {user_id} выбрал язык: {language}")
+    
+    def create_booking(self, user_id: int, user_name: str, start_time: str, 
+                      end_time: str, description: str) -> bool:
+        """Создать бронирование"""
+        try:
+            bookings = self._read_json(self.bookings_file)
+            counter = self._read_json(self.booking_id_file)
+            
+            booking_id = counter.get('next_id', 1)
+            
+            booking = {
+                'id': booking_id,
+                'user_id': user_id,
+                'user_name': user_name,
+                'start_time': start_time,
+                'end_time': end_time,
+                'description': description,
+                'created_at': datetime.now().isoformat(),
+                'status': 'active'
+            }
+            
+            bookings.append(booking)
+            self._write_json(self.bookings_file, bookings)
+            
+            counter['next_id'] = booking_id + 1
+            self._write_json(self.booking_id_file, counter)
+            
+            logger.info(f"✅ Бронирование #{booking_id} создано для {user_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка создания бронирования: {e}")
             return False
     
-    def get_upcoming_bookings(self, days: int = 7) -> List[Dict]:
-        """
-        Получить все предстоящие бронирования
-        
-        Args:
-            days: Количество дней вперед
-            
-        Returns:
-            Список бронирований
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            now = datetime.now().isoformat()
-            future = (datetime.now() + timedelta(days=days)).isoformat()
-            
-            cursor.execute('''
-                SELECT * FROM bookings
-                WHERE status = 'active'
-                AND end_time > ?
-                AND start_time < ?
-                ORDER BY start_time
-            ''', (now, future))
-            
-            bookings = [dict(row) for row in cursor.fetchall()]
-            conn.close()
-            
-            return bookings
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении бронирований: {e}")
-            return []
-    
-    def get_bookings_by_date(self, date: str) -> List[Dict]:
-        """
-        Получить все бронирования на конкретную дату
-        
-        Args:
-            date: Дата в формате YYYY-MM-DD
-            
-        Returns:
-            Список бронирований
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            start_of_day = f"{date}T00:00:00"
-            end_of_day = f"{date}T23:59:59"
-            
-            cursor.execute('''
-                SELECT * FROM bookings
-                WHERE status = 'active'
-                AND start_time >= ?
-                AND start_time <= ?
-                ORDER BY start_time
-            ''', (start_of_day, end_of_day))
-            
-            bookings = [dict(row) for row in cursor.fetchall()]
-            conn.close()
-            
-            return bookings
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении бронирований на дату {date}: {e}")
-            return []
-    
     def get_user_bookings(self, user_id: int) -> List[Dict]:
-        """
-        Получить все активные бронирования пользователя
-        
-        Args:
-            user_id: ID пользователя
-            
-        Returns:
-            Список бронирований пользователя
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            now = datetime.now().isoformat()
-            
-            cursor.execute('''
-                SELECT * FROM bookings
-                WHERE user_id = ?
-                AND status = 'active'
-                AND end_time > ?
-                ORDER BY start_time
-            ''', (user_id, now))
-            
-            bookings = [dict(row) for row in cursor.fetchall()]
-            conn.close()
-            
-            return bookings
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении бронирований пользователя {user_id}: {e}")
-            return []
+        """Получить брони пользователя"""
+        bookings = self._read_json(self.bookings_file)
+        user_bookings = [b for b in bookings if b['user_id'] == user_id and b['status'] == 'active']
+        return sorted(user_bookings, key=lambda x: x['start_time'])
     
-    def get_booking(self, booking_id: int) -> Optional[Dict]:
-        """
-        Получить информацию о конкретном бронировании
+    def get_bookings_by_date(self, date_str: str) -> List[Dict]:
+        """Получить брони на конкретную дату"""
+        bookings = self._read_json(self.bookings_file)
+        date_bookings = []
         
-        Args:
-            booking_id: ID бронирования
-            
-        Returns:
-            Информация о бронировании или None
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT * FROM bookings
-                WHERE id = ?
-            ''', (booking_id,))
-            
-            row = cursor.fetchone()
-            conn.close()
-            
-            return dict(row) if row else None
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении бронирования {booking_id}: {e}")
-            return None
+        for booking in bookings:
+            if booking['status'] == 'active':
+                start = datetime.fromisoformat(booking['start_time'])
+                if start.date().isoformat() == date_str:
+                    date_bookings.append(booking)
+        
+        return sorted(date_bookings, key=lambda x: x['start_time'])
     
-    def delete_booking(self, booking_id: int) -> bool:
-        """
-        Отменить (удалить) бронирование
-        
-        Args:
-            booking_id: ID бронирования
-            
-        Returns:
-            True если бронирование отменено успешно
-        """
+    def get_all_bookings(self) -> List[Dict]:
+        """Получить все активные брони"""
+        bookings = self._read_json(self.bookings_file)
+        return [b for b in bookings if b['status'] == 'active']
+    
+    def cancel_booking(self, booking_id: int, user_id: int) -> bool:
+        """Отменить бронирование"""
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
+            bookings = self._read_json(self.bookings_file)
             
-            # Помечаем как отмененное вместо удаления
-            cursor.execute('''
-                UPDATE bookings
-                SET status = 'cancelled'
-                WHERE id = ?
-            ''', (booking_id,))
+            for booking in bookings:
+                if booking['id'] == booking_id and booking['user_id'] == user_id and booking['status'] == 'active':
+                    booking['status'] = 'cancelled'
+                    booking['cancelled_at'] = datetime.now().isoformat()
+                    self._write_json(self.bookings_file, bookings)
+                    logger.info(f"✅ Бронирование #{booking_id} отменено")
+                    return True
             
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Бронирование {booking_id} отменено")
-            return True
-            
+            logger.warning(f"Бронирование #{booking_id} не найдено или уже отменено")
+            return False
         except Exception as e:
-            logger.error(f"Ошибка при отмене бронирования {booking_id}: {e}")
+            logger.error(f"Ошибка отмены бронирования: {e}")
             return False
     
     def cleanup_old_bookings(self, days: int = 30):
-        """
-        Очистить старые бронирования
-        
-        Args:
-            days: Удалить бронирования старше указанного количества дней
-        """
+        """Удалить старые отменённые брони"""
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
+            bookings = self._read_json(self.bookings_file)
+            cutoff_date = datetime.now() - timedelta(days=days)
             
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+            filtered_bookings = []
+            removed_count = 0
             
-            cursor.execute('''
-                DELETE FROM bookings
-                WHERE end_time < ?
-            ''', (cutoff_date,))
+            for booking in bookings:
+                if booking['status'] == 'cancelled':
+                    cancelled_at = datetime.fromisoformat(booking.get('cancelled_at', booking['created_at']))
+                    if cancelled_at < cutoff_date:
+                        removed_count += 1
+                        continue
+                filtered_bookings.append(booking)
             
-            deleted_count = cursor.rowcount
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Удалено {deleted_count} старых бронирований")
-            
+            self._write_json(self.bookings_file, filtered_bookings)
+            if removed_count > 0:
+                logger.info(f"🧹 Удалено {removed_count} старых отменённых бронирований")
         except Exception as e:
-            logger.error(f"Ошибка при очистке старых бронирований: {e}")
+            logger.error(f"Ошибка очистки: {e}")
     
-    def get_statistics(self) -> Dict:
-        """
-        Получить статистику по бронированиям
-        
-        Returns:
-            Словарь со статистикой
-        """
+    def export_bookings(self, filename: str = "bookings_export.json"):
+        """Экспортировать все брони в файл"""
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            # Общее количество активных бронирований
-            cursor.execute('''
-                SELECT COUNT(*) as total FROM bookings
-                WHERE status = 'active'
-                AND end_time > ?
-            ''', (datetime.now().isoformat(),))
-            
-            total_active = cursor.fetchone()['total']
-            
-            # Количество бронирований сегодня
-            today = datetime.now().date().isoformat()
-            cursor.execute('''
-                SELECT COUNT(*) as today FROM bookings
-                WHERE status = 'active'
-                AND start_time LIKE ?
-            ''', (f"{today}%",))
-            
-            today_count = cursor.fetchone()['today']
-            
-            # Самый активный пользователь
-            cursor.execute('''
-                SELECT user_name, COUNT(*) as count
-                FROM bookings
-                WHERE status = 'active'
-                GROUP BY user_id
-                ORDER BY count DESC
-                LIMIT 1
-            ''')
-            
-            top_user = cursor.fetchone()
-            conn.close()
-            
-            return {
-                'total_active': total_active,
-                'today': today_count,
-                'top_user': dict(top_user) if top_user else None
-            }
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении статистики: {e}")
-            return {}
-    
-    def set_user_language(self, user_id: int, language: str, first_name: str = None, 
-                         last_name: str = None, username: str = None) -> bool:
-        """
-        Установить язык пользователя
-        
-        Args:
-            user_id: ID пользователя Telegram
-            language: Код языка ('ru' или 'az')
-            first_name: Имя пользователя
-            last_name: Фамилия пользователя
-            username: Username пользователя
-            
-        Returns:
-            True если успешно
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            updated_at = datetime.now().isoformat()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO users 
-                (user_id, language, first_name, last_name, username, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, language, first_name, last_name, username, updated_at))
-            
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Язык пользователя {user_id} установлен: {language}")
+            bookings = self._read_json(self.bookings_file)
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(bookings, f, ensure_ascii=False, indent=2)
+            logger.info(f"📤 Брони экспортированы в {filename}")
             return True
-            
         except Exception as e:
-            logger.error(f"Ошибка при установке языка: {e}")
+            logger.error(f"Ошибка экспорта: {e}")
             return False
-    
-    def get_user_language(self, user_id: int) -> str:
-        """
-        Получить язык пользователя
-        
-        Args:
-            user_id: ID пользователя Telegram
-            
-        Returns:
-            Код языка ('ru' или 'az'), по умолчанию 'ru'
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT language FROM users WHERE user_id = ?
-            ''', (user_id,))
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            return result['language'] if result else 'ru'
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении языка: {e}")
-            return 'ru'

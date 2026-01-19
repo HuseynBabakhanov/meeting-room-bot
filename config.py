@@ -12,8 +12,8 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 # Настройки базы данных
-DATABASE_URL = os.getenv("DATABASE_URL")  # PostgreSQL на DigitalOcean
-DATABASE_NAME = "meeting_room.db"  # SQLite локально
+# DATABASE_URL = os.getenv("DATABASE_URL")  # Больше не нужна - используем JSON
+DATABASE_NAME = "meeting_room.db"  # Больше не используется
 
 # Настройки времени работы комнаты
 ROOM_OPEN_HOUR = 8  # Комната открывается в 08:00
