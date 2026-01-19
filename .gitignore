@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables (ТОКЕН БОТА - ВАЖНО!)
+.env
+.env.*
+config.local.py
+
+# Database (ДАННЫЕ ПОЛЬЗОВАТЕЛЕЙ - ВАЖНО!)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+meeting_room.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment scripts (только для локального сервера)
+DEPLOY_WINDOWS.md
+DEPLOY_LINUX.md
+start_bot.ps1
+stop_bot.ps1
+check_status.ps1
+monitor_bot.ps1
+*.ps1
+install_linux.sh
+start_linux.sh
+stop_linux.sh
+status_linux.sh
+*.sh
+offline_install/
+
+# Temporary & Backup
+*.tmp
+*.temp
+*.backup
+*.bak
+.cache/
