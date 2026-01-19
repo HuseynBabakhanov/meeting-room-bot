@@ -17,7 +17,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from database import Database
-from config import BOT_TOKEN
+from config import BOT_TOKEN, GROUP_CHAT_ID
 from translations import get_text, get_weekday, get_month
 
 # Настройка логирования
@@ -408,6 +408,31 @@ class MeetingRoomBot:
         
         return ENTERING_DESCRIPTION
     
+    async def send_group_notification(self, context: ContextTypes.DEFAULT_TYPE, user, start_time, end_time, description):
+        """Отправить уведомление о новой брони в группу"""
+        if not GROUP_CHAT_ID:
+            return  # Если GROUP_CHAT_ID не установлен, не отправляем уведомление
+        
+        try:
+            # Форматируем сообщение для группы (двуязычное)
+            message = (
+                f"📢 <b>НОВАЯ БРОНЬ</b> / <b>YENİ REZERV</b>\n\n"
+                f"👤 <b>Пользователь / Istifadəçi:</b> {user.full_name}\n"
+                f"📅 <b>Дата / Tarix:</b> {start_time.strftime('%d.%m.%Y')}\n"
+                f"⏰ <b>Время / Saat:</b> {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}\n"
+                f"📝 <b>Описание / Təsvir:</b> {description}\n"
+            )
+            
+            await context.bot.send_message(
+                chat_id=int(GROUP_CHAT_ID),
+                text=message,
+                parse_mode='HTML'
+            )
+            logger.info(f"Уведомление о брони отправлено в группу {GROUP_CHAT_ID}")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления в группу: {e}")
+    
+
     async def confirm_booking(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Подтверждение и создание брони"""
         description = update.message.text
@@ -441,6 +466,9 @@ class MeetingRoomBot:
         )
         
         if success:
+            # Отправляем уведомление в группу
+            await self.send_group_notification(context, user, start_time, end_time, description)
+            
             keyboard = [
                 [InlineKeyboardButton(get_text(lang, 'btn_my_bookings'), callback_data="my_bookings")],
                 [InlineKeyboardButton(get_text(lang, 'btn_main_menu'), callback_data="back_to_menu")]
