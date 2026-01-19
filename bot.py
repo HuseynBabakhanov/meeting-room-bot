@@ -719,42 +719,42 @@ def main():
         
         bot = MeetingRoomBot()
         logger.info("✅ Бот инициализирован успешно")
-    
-    # Обработчик процесса бронирования
-    booking_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(bot.start_booking, pattern="^create_booking$")],
-        states={
-            SELECTING_DATE: [CallbackQueryHandler(bot.select_time, pattern="^date_")],
-            SELECTING_TIME: [CallbackQueryHandler(bot.select_duration, pattern="^time_|^occupied$")],
-            ENTERING_DURATION: [CallbackQueryHandler(bot.enter_description, pattern="^duration_")],
-            ENTERING_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.confirm_booking)],
-        },
-        fallbacks=[
-            CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"),
-            CallbackQueryHandler(bot.start_booking, pattern="^create_booking$")
-        ],
-    )
-    
-    # Добавляем обработчики
-    application.add_handler(ChatMemberHandler(bot.bot_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot.new_member_joined))
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CallbackQueryHandler(bot.select_language, pattern="^lang_"))
-    application.add_handler(CallbackQueryHandler(bot.change_language, pattern="^change_language$"))
-    application.add_handler(booking_handler)
-    application.add_handler(CallbackQueryHandler(bot.view_bookings, pattern="^view_bookings$"))
-    application.add_handler(CallbackQueryHandler(bot.my_bookings, pattern="^my_bookings$"))
-    application.add_handler(CallbackQueryHandler(bot.cancel_booking, pattern="^cancel_"))
-    application.add_handler(CallbackQueryHandler(bot.show_help, pattern="^help$"))
-    application.add_handler(CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"))
-    
-    # Запускаем бота
-    logger.info("🎯 Регистрация обработчиков завершена")
-    logger.info("=" * 50)
-    logger.info("✅ БОТ ГОТОВ И РАБОТАЕТ")
-    logger.info("=" * 50)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-    
+        
+        # Обработчик процесса бронирования
+        booking_handler = ConversationHandler(
+            entry_points=[CallbackQueryHandler(bot.start_booking, pattern="^create_booking$")],
+            states={
+                SELECTING_DATE: [CallbackQueryHandler(bot.select_time, pattern="^date_")],
+                SELECTING_TIME: [CallbackQueryHandler(bot.select_duration, pattern="^time_|^occupied$")],
+                ENTERING_DURATION: [CallbackQueryHandler(bot.enter_description, pattern="^duration_")],
+                ENTERING_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.confirm_booking)],
+            },
+            fallbacks=[
+                CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"),
+                CallbackQueryHandler(bot.start_booking, pattern="^create_booking$")
+            ],
+        )
+        
+        # Добавляем обработчики
+        application.add_handler(ChatMemberHandler(bot.bot_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
+        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot.new_member_joined))
+        application.add_handler(CommandHandler("start", bot.start))
+        application.add_handler(CallbackQueryHandler(bot.select_language, pattern="^lang_"))
+        application.add_handler(CallbackQueryHandler(bot.change_language, pattern="^change_language$"))
+        application.add_handler(booking_handler)
+        application.add_handler(CallbackQueryHandler(bot.view_bookings, pattern="^view_bookings$"))
+        application.add_handler(CallbackQueryHandler(bot.my_bookings, pattern="^my_bookings$"))
+        application.add_handler(CallbackQueryHandler(bot.cancel_booking, pattern="^cancel_"))
+        application.add_handler(CallbackQueryHandler(bot.show_help, pattern="^help$"))
+        application.add_handler(CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"))
+        
+        # Запускаем бота
+        logger.info("🎯 Регистрация обработчиков завершена")
+        logger.info("=" * 50)
+        logger.info("✅ БОТ ГОТОВ И РАБОТАЕТ")
+        logger.info("=" * 50)
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
     except Exception as e:
         logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}", exc_info=True)
         raise

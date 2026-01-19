@@ -75,3 +75,15 @@ offline_install/
 *.backup
 *.bak
 .cache/
+# JSON Data (don't sync personal booking data)
+data/bookings.json
+data/users.json
+data/booking_id.json
+bookings.json
+users.json
+booking_id.json
+
+# Old database files
+*.db
+*.sqlite
+*.sqlite3
