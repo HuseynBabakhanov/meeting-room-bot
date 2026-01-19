@@ -131,6 +131,14 @@ class Database:
         user_bookings = [b for b in bookings if b['user_id'] == user_id and b['status'] == 'active']
         return sorted(user_bookings, key=lambda x: x['start_time'])
     
+    def get_booking(self, booking_id: int) -> Optional[Dict]:
+        """Получить бронь по ID"""
+        bookings = self._read_json(self.bookings_file)
+        for booking in bookings:
+            if booking['id'] == booking_id:
+                return booking
+        return None
+    
     def get_bookings_by_date(self, date_str: str) -> List[Dict]:
         """Получить брони на конкретную дату"""
         bookings = self._read_json(self.bookings_file)
