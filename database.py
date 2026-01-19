@@ -20,6 +20,10 @@ class Database:
     def __init__(self, db_name: str = "meeting_room.db"):
         """Инициализация базы данных"""
         self.db_url = os.getenv("DATABASE_URL")
+        # Исправление формата DATABASE_URL для psycopg2
+        if self.db_url:
+            # Заменяем 'username=' на 'user=' если есть
+            self.db_url = self.db_url.replace("username=", "user=")
         self.db_name = db_name
         self.is_postgres = self.db_url is not None
         self.init_db()
