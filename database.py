@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
 import os
+from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,28 @@ class Database:
     
     def __init__(self, db_name: str = "meeting_room.db"):
         """Инициализация базы данных"""
-        self.db_url = os.getenv("DATABASE_URL")
-        # Исправление формата DATABASE_URL для psycopg2
-        if self.db_url:
-            # Заменяем 'username=' на 'user=' если есть
-            self.db_url = self.db_url.replace("username=", "user=")
+        db_url = os.getenv("DATABASE_URL")
         self.db_name = db_name
-        self.is_postgres = self.db_url is not None
+        self.is_postgres = db_url is not None
+        
+        if self.is_postgres:
+            # Преобразуем DigitalOcean URL формат в psycopg2 совместимый
+            self.db_url = self._convert_db_url(db_url)
+        else:
+            self.db_url = None
+            
         self.init_db()
+    
+    def _convert_db_url(self, url: str) -> str:
+        """Преобразуем DigitalOcean URL в формат для psycopg2"""
+        # Если URL уже содержит 'postgresql://', используем его как есть
+        if url.startswith('postgresql://'):
+            # Заменяем 'username=' на 'user=' если есть
+            url = url.replace('username=', 'user=')
+            return url
+        # Если формат неправильный, логируем для отладки
+        logger.warning(f"Необычный формат DATABASE_URL: {url[:50]}...")
+        return url
     
     def get_connection(self):
         """Получить соединение с базой данных"""
