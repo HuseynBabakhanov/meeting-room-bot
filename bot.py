@@ -223,6 +223,7 @@ class MeetingRoomBot:
         
         user = update.effective_user
         lang = self.db.get_user_language(user.id)
+        chat_type = update.effective_chat.type
         
         # Получаем брони на ближайшие 7 дней
         bookings = self.db.get_upcoming_bookings(days=7)
@@ -255,11 +256,20 @@ class MeetingRoomBot:
         keyboard = [[InlineKeyboardButton(get_text(lang, 'btn_back'), callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        # В группе отправляем новое сообщение, а не редактируем
+        if chat_type in ['group', 'supergroup']:
+            await query.message.reply_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        else:
+            # В личке можно редактировать
+            await query.edit_message_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
     
     async def start_booking(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Начать процесс бронирования - выбор даты"""
@@ -512,6 +522,7 @@ class MeetingRoomBot:
         user = update.effective_user
         lang = self.db.get_user_language(user.id)
         user_id = user.id
+        chat_type = update.effective_chat.type
         bookings = self.db.get_user_bookings(user_id)
         
         if not bookings:
@@ -540,11 +551,20 @@ class MeetingRoomBot:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        # В группе отправляем новое сообщение, а не редактируем
+        if chat_type in ['group', 'supergroup']:
+            await query.message.reply_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        else:
+            # В личке можно редактировать
+            await query.edit_message_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
     
     async def cancel_booking(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Отменить бронирование"""
@@ -560,8 +580,11 @@ class MeetingRoomBot:
         booking = self.db.get_booking(booking_id)
         
         if booking and booking['user_id'] == user_id:
-            self.db.delete_booking(booking_id)
-            await query.answer(get_text(lang, 'booking_cancelled'), show_alert=True)
+            success = self.db.cancel_booking(booking_id, user_id)
+            if success:
+                await query.answer(get_text(lang, 'booking_cancelled'), show_alert=True)
+            else:
+                await query.answer(get_text(lang, 'cancel_error'), show_alert=True)
         else:
             await query.answer(get_text(lang, 'cancel_error'), show_alert=True)
         
