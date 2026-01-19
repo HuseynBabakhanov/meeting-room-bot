@@ -1,12 +1,15 @@
 """
-Модуль для работы с базой данных SQLite
+Модуль для работы с базой данных (SQLite локально, PostgreSQL на сервере)
 Управление бронированиями переговорной комнаты
 """
 
 import sqlite3
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -16,59 +19,105 @@ class Database:
     
     def __init__(self, db_name: str = "meeting_room.db"):
         """Инициализация базы данных"""
+        self.db_url = os.getenv("DATABASE_URL")
         self.db_name = db_name
+        self.is_postgres = self.db_url is not None
         self.init_db()
     
     def get_connection(self):
         """Получить соединение с базой данных"""
-        conn = sqlite3.connect(self.db_name)
-        conn.row_factory = sqlite3.Row
-        return conn
+        if self.is_postgres:
+            conn = psycopg2.connect(self.db_url)
+            return conn
+        else:
+            conn = sqlite3.connect(self.db_name)
+            conn.row_factory = sqlite3.Row
+            return conn
     
     def init_db(self):
         """Инициализация структуры базы данных"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Создаем таблицу бронирований
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                user_name TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                description TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                status TEXT DEFAULT 'active'
-            )
-        ''')
-        
-        # Создаем таблицу пользователей для хранения языка
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                language TEXT DEFAULT 'ru',
-                first_name TEXT,
-                last_name TEXT,
-                username TEXT,
-                updated_at TEXT
-            )
-        ''')
-        
-        # Создаем индексы для быстрого поиска
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_start_time 
-            ON bookings(start_time)
-        ''')
-        
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_user_id 
-            ON bookings(user_id)
-        ''')
-        
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_status 
+        if self.is_postgres:
+            # PostgreSQL синтаксис
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS bookings (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    start_time TIMESTAMP NOT NULL,
+                    end_time TIMESTAMP NOT NULL,
+                    description TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    status TEXT DEFAULT 'active'
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    language TEXT DEFAULT 'ru',
+                    first_name TEXT,
+                    last_name TEXT,
+                    username TEXT,
+                    updated_at TIMESTAMP
+                )
+            ''')
+            
+            # Индексы для PostgreSQL
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_start_time 
+                ON bookings(start_time)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_id 
+                ON bookings(user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_status 
+                ON bookings(status)
+            ''')
+        else:
+            # SQLite синтаксис
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS bookings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    user_name TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    status TEXT DEFAULT 'active'
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    language TEXT DEFAULT 'ru',
+                    first_name TEXT,
+                    last_name TEXT,
+                    username TEXT,
+                    updated_at TEXT
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_start_time 
+                ON bookings(start_time)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_id 
+                ON bookings(user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_status 
             ON bookings(status)
         ''')
         
