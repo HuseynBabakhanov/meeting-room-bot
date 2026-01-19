@@ -22,22 +22,29 @@ class Database:
         """Инициализация базы данных"""
         db_url = os.getenv("DATABASE_URL")
         self.db_name = db_name
-        self.is_postgres = db_url is not None
+        self.is_postgres = db_url is not None and db_url.strip() != ""
         
         if self.is_postgres:
             # Преобразуем DigitalOcean URL формат в psycopg2 совместимый
             self.db_url = self._convert_db_url(db_url)
+            logger.info(f"PostgreSQL режим: подключение к БД")
         else:
             self.db_url = None
+            logger.info(f"SQLite режим: использую локальную БД {db_name}")
             
         self.init_db()
     
     def _convert_db_url(self, url: str) -> str:
         """Преобразуем DigitalOcean URL в формат для psycopg2"""
+        if not url or url.strip() == "":
+            logger.error("DATABASE_URL пуста!")
+            return None
+            
         # Если URL уже содержит 'postgresql://', используем его как есть
         if url.startswith('postgresql://'):
             # Заменяем 'username=' на 'user=' если есть
             url = url.replace('username=', 'user=')
+            logger.info("DATABASE_URL успешно преобразована")
             return url
         # Если формат неправильный, логируем для отладки
         logger.warning(f"Необычный формат DATABASE_URL: {url[:50]}...")
@@ -46,8 +53,21 @@ class Database:
     def get_connection(self):
         """Получить соединение с базой данных"""
         if self.is_postgres:
-            conn = psycopg2.connect(self.db_url)
-            return conn
+            if not self.db_url:
+                logger.error("DATABASE_URL не установлена, переходим на SQLite")
+                self.is_postgres = False
+                conn = sqlite3.connect(self.db_name)
+                conn.row_factory = sqlite3.Row
+                return conn
+            
+            try:
+                conn = psycopg2.connect(self.db_url)
+                logger.info("Успешное подключение к PostgreSQL")
+                return conn
+            except Exception as e:
+                logger.error(f"Ошибка подключения к PostgreSQL: {e}")
+                logger.error(f"DATABASE_URL формат: {self.db_url[:50] if self.db_url else 'None'}...")
+                raise
         else:
             conn = sqlite3.connect(self.db_name)
             conn.row_factory = sqlite3.Row

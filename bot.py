@@ -31,7 +31,13 @@ logger = logging.getLogger(__name__)
 SELECTING_LANGUAGE, SELECTING_DATE, SELECTING_TIME, ENTERING_DURATION, ENTERING_DESCRIPTION = range(5)
 
 # Инициализация базы данных
-db = Database()
+logger.info("Инициализация базы данных...")
+try:
+    db = Database()
+    logger.info("✅ База данных успешно инициализирована")
+except Exception as e:
+    logger.error(f"❌ Ошибка инициализации БД: {e}")
+    raise
 
 
 class MeetingRoomBot:
@@ -698,10 +704,21 @@ class MeetingRoomBot:
 
 def main():
     """Запуск бота"""
-    # Создаем приложение
-    application = Application.builder().token(BOT_TOKEN).build()
+    logger.info("=" * 50)
+    logger.info("🚀 ЗАПУСК БОТА MEETING ROOM")
+    logger.info("=" * 50)
     
-    bot = MeetingRoomBot()
+    try:
+        logger.info("Проверка конфигурации...")
+        logger.info(f"BOT_TOKEN установлен: {bool(BOT_TOKEN)}")
+        logger.info(f"GROUP_CHAT_ID: {GROUP_CHAT_ID if GROUP_CHAT_ID else '(не установлен, уведомления отключены)'}")
+        
+        # Создаем приложение
+        logger.info("Создание приложения Telegram...")
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        bot = MeetingRoomBot()
+        logger.info("✅ Бот инициализирован успешно")
     
     # Обработчик процесса бронирования
     booking_handler = ConversationHandler(
@@ -732,8 +749,15 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"))
     
     # Запускаем бота
-    logger.info("Бот запущен...")
+    logger.info("🎯 Регистрация обработчиков завершена")
+    logger.info("=" * 50)
+    logger.info("✅ БОТ ГОТОВ И РАБОТАЕТ")
+    logger.info("=" * 50)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+    
+    except Exception as e:
+        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
