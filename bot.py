@@ -417,6 +417,7 @@ class MeetingRoomBot:
     async def send_group_notification(self, context: ContextTypes.DEFAULT_TYPE, user, start_time, end_time, description):
         """Отправить уведомление о новой брони в группу"""
         if not GROUP_CHAT_ID:
+            logger.info("⚠️ GROUP_CHAT_ID не установлен - уведомления в группу отключены")
             return  # Если GROUP_CHAT_ID не установлен, не отправляем уведомление
         
         try:
@@ -429,14 +430,16 @@ class MeetingRoomBot:
                 f"📝 <b>Описание / Təsvir:</b> {description}\n"
             )
             
+            logger.info(f"📤 Отправка уведомления в группу {GROUP_CHAT_ID}...")
             await context.bot.send_message(
                 chat_id=int(GROUP_CHAT_ID),
                 text=message,
                 parse_mode='HTML'
             )
-            logger.info(f"Уведомление о брони отправлено в группу {GROUP_CHAT_ID}")
+            logger.info(f"✅ Уведомление о брони отправлено в группу {GROUP_CHAT_ID}")
         except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления в группу: {e}")
+            logger.error(f"❌ Ошибка при отправке уведомления в группу: {e}")
+            logger.error(f"GROUP_CHAT_ID: {GROUP_CHAT_ID}")
     
 
     async def confirm_booking(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

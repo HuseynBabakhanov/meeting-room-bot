@@ -149,6 +149,21 @@ class Database:
         bookings = self._read_json(self.bookings_file)
         return [b for b in bookings if b['status'] == 'active']
     
+    def get_upcoming_bookings(self, days: int = 7) -> List[Dict]:
+        """Получить предстоящие брони на ближайшие N дней"""
+        bookings = self._read_json(self.bookings_file)
+        now = datetime.now()
+        end_date = now + timedelta(days=days)
+        
+        upcoming = []
+        for booking in bookings:
+            if booking['status'] == 'active':
+                start = datetime.fromisoformat(booking['start_time'])
+                if now <= start <= end_date:
+                    upcoming.append(booking)
+        
+        return sorted(upcoming, key=lambda x: x['start_time'])
+    
     def cancel_booking(self, booking_id: int, user_id: int) -> bool:
         """Отменить бронирование"""
         try:
