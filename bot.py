@@ -253,7 +253,7 @@ class MeetingRoomBot:
                     f"{'─' * 30}\n"
                 )
         
-        keyboard = [[InlineKeyboardButton(get_text(lang, 'btn_back'), callback_data="back_to_menu")]]
+        keyboard = []
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         # В группе отправляем новое сообщение, а не редактируем
@@ -429,6 +429,18 @@ class MeetingRoomBot:
         if not GROUP_CHAT_ID:
             logger.info("⚠️ GROUP_CHAT_ID не установлен - уведомления в группу отключены")
             return  # Если GROUP_CHAT_ID не установлен, не отправляем уведомление
+
+        # Нормализуем и валидируем GROUP_CHAT_ID
+        raw_id = str(GROUP_CHAT_ID).strip()
+        chat_id: int | None = None
+        try:
+            # Удаляем возможные кавычки
+            if raw_id.startswith("\"") and raw_id.endswith("\""):
+                raw_id = raw_id[1:-1]
+            chat_id = int(raw_id)
+        except Exception:
+            logger.error(f"❌ Некорректный GROUP_CHAT_ID: '{GROUP_CHAT_ID}'. Укажите числовой ID группы (например, -1001234567890)")
+            return
         
         try:
             # Форматируем сообщение для группы (двуязычное)
@@ -440,13 +452,13 @@ class MeetingRoomBot:
                 f"📝 <b>Описание / Təsvir:</b> {description}\n"
             )
             
-            logger.info(f"📤 Отправка уведомления в группу {GROUP_CHAT_ID}...")
+            logger.info(f"📤 Отправка уведомления в группу {chat_id}...")
             await context.bot.send_message(
-                chat_id=int(GROUP_CHAT_ID),
+                chat_id=chat_id,
                 text=message,
                 parse_mode='HTML'
             )
-            logger.info(f"✅ Уведомление о брони отправлено в группу {GROUP_CHAT_ID}")
+            logger.info(f"✅ Уведомление о брони отправлено в группу {chat_id}")
         except Exception as e:
             logger.error(f"❌ Ошибка при отправке уведомления в группу: {e}")
             logger.error(f"GROUP_CHAT_ID: {GROUP_CHAT_ID}")
@@ -615,6 +627,30 @@ class MeetingRoomBot:
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
+
+    async def chat_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать ID текущего чата или ID пересланного чата"""
+        chat = update.effective_chat
+        msg = update.message
+
+        info_lines = []
+        info_lines.append(f"Текущий чат: {chat.type}")
+        if chat.title:
+            info_lines.append(f"Название: {chat.title}")
+        info_lines.append(f"Chat ID: {chat.id}")
+
+        # Если переслано сообщение из другого чата, покажем его ID
+        if msg and msg.forward_from_chat:
+            fchat = msg.forward_from_chat
+            info_lines.append("")
+            info_lines.append("Переслано из чата:")
+            if fchat.title:
+                info_lines.append(f"Название: {fchat.title}")
+            info_lines.append(f"Тип: {fchat.type}")
+            info_lines.append(f"Chat ID: {fchat.id}")
+
+        text = "\n".join(info_lines)
+        await msg.reply_text(text)
     
     async def cancel_operation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Отменить текущую операцию"""
@@ -765,6 +801,7 @@ def main():
         application.add_handler(ChatMemberHandler(bot.bot_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot.new_member_joined))
         application.add_handler(CommandHandler("start", bot.start))
+        application.add_handler(CommandHandler("chatid", bot.chat_id))
         application.add_handler(CallbackQueryHandler(bot.select_language, pattern="^lang_"))
         application.add_handler(CallbackQueryHandler(bot.change_language, pattern="^change_language$"))
         application.add_handler(booking_handler)
@@ -772,7 +809,6 @@ def main():
         application.add_handler(CallbackQueryHandler(bot.my_bookings, pattern="^my_bookings$"))
         application.add_handler(CallbackQueryHandler(bot.cancel_booking, pattern="^cancel_"))
         application.add_handler(CallbackQueryHandler(bot.show_help, pattern="^help$"))
-        application.add_handler(CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"))
         
         # Запускаем бота
         logger.info("🎯 Регистрация обработчиков завершена")
