@@ -317,8 +317,8 @@ class MeetingRoomBot:
                 time_str = f"{hour:02d}:{minute:02d}"
                 time_obj = datetime.combine(date_obj, datetime.strptime(time_str, "%H:%M").time())
                 
-                # Проверяем, доступно ли это время
-                is_available = self._is_time_available(time_obj, bookings)
+                # Проверяем, доступно ли это время (не прошло и не занято)
+                is_available = self._is_time_available(time_obj, bookings) and time_obj > datetime.now()
                 
                 button_text = f"{'✅' if is_available else '❌'} {time_str}"
                 keyboard.append([InlineKeyboardButton(
