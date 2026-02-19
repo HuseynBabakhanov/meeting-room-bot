@@ -788,6 +788,7 @@ def main():
         application.add_handler(CallbackQueryHandler(bot.select_language, pattern="^lang_"))
         application.add_handler(CallbackQueryHandler(bot.change_language, pattern="^change_language$"))
         application.add_handler(booking_handler)
+        application.add_handler(CallbackQueryHandler(bot.main_menu, pattern="^back_to_menu$"))
         application.add_handler(CallbackQueryHandler(bot.view_bookings, pattern="^view_bookings$"))
         application.add_handler(CallbackQueryHandler(bot.my_bookings, pattern="^my_bookings$"))
         application.add_handler(CallbackQueryHandler(bot.cancel_booking, pattern="^cancel_"))
