@@ -72,21 +72,8 @@ class MeetingRoomBot:
                 # Показываем главное меню на выбранном языке
                 await self.show_main_menu(update, context, user_lang, user)
         else:
-            # В группе показываем двуязычный интерфейс
-            keyboard = [
-                [InlineKeyboardButton("📅 Посмотреть брони / Bronları göstər", callback_data="view_bookings")],
-                [InlineKeyboardButton("➕ Забронировать / Rezerv et", url=f"https://t.me/{context.bot.username}?start=booking")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            text = (
-                "👋 Привет! Я бот для бронирования Meeting Room 2A\n"
-                "👋 Salam! Mən Meeting Room 2A rezervasiya botuyam\n\n"
-                "📋 RU: Нажмите кнопки для просмотра и создания броней\n"
-                "📋 AZ: Rezervləri görmək və yaratmaq üçün düymələrə basın"
-            )
-            
-            await update.message.reply_text(text, reply_markup=reply_markup)
+            # В группе бот не отвечает на команды
+            return
     
     async def select_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора языка"""
@@ -253,21 +240,19 @@ class MeetingRoomBot:
                     f"{'─' * 30}\n"
                 )
         
-        keyboard = []
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # В группе отправляем новое сообщение, а не редактируем
+        # В группе отправляем новое сообщение без кнопок
         if chat_type in ['group', 'supergroup']:
             await query.message.reply_text(
                 text,
-                reply_markup=reply_markup,
+                reply_markup=InlineKeyboardMarkup([]),
                 parse_mode='HTML'
             )
         else:
-            # В личке можно редактировать
+            # В личке — с кнопкой назад
+            keyboard = [[InlineKeyboardButton(get_text(lang, 'btn_back'), callback_data="back_to_menu")]]
             await query.edit_message_text(
                 text,
-                reply_markup=reply_markup,
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='HTML'
             )
     
@@ -798,8 +783,6 @@ def main():
         )
         
         # Добавляем обработчики
-        application.add_handler(ChatMemberHandler(bot.bot_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
-        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot.new_member_joined))
         application.add_handler(CommandHandler("start", bot.start))
         application.add_handler(CommandHandler("chatid", bot.chat_id))
         application.add_handler(CallbackQueryHandler(bot.select_language, pattern="^lang_"))
