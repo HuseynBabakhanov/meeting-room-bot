@@ -2,6 +2,7 @@ services:
   - type: worker
     name: meeting-room-bot
     env: python
+    pythonVersion: "3.12.7"
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
