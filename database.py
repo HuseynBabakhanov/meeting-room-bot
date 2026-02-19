@@ -6,7 +6,12 @@
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+BAKU_TZ = timezone(timedelta(hours=4))
+
+def now_baku():
+    return datetime.now(BAKU_TZ).replace(tzinfo=None)
 from typing import List, Dict, Optional
 import threading
 
@@ -160,7 +165,7 @@ class Database:
     def get_upcoming_bookings(self, days: int = 7) -> List[Dict]:
         """Получить предстоящие брони на ближайшие N дней"""
         bookings = self._read_json(self.bookings_file)
-        now = datetime.now()
+        now = now_baku()
         end_date = now + timedelta(days=days)
         
         upcoming = []

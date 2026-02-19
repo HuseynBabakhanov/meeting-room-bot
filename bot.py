@@ -4,7 +4,13 @@ Telegram бот для резервации митинг-рума
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+BAKU_TZ = timezone(timedelta(hours=4))
+
+def now_baku():
+    """Текущее время в Баку (UTC+4)"""
+    return datetime.now(BAKU_TZ).replace(tzinfo=None)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -318,7 +324,7 @@ class MeetingRoomBot:
                 time_obj = datetime.combine(date_obj, datetime.strptime(time_str, "%H:%M").time())
                 
                 # Проверяем, доступно ли это время (не прошло и не занято)
-                is_available = self._is_time_available(time_obj, bookings) and time_obj > datetime.now()
+                is_available = self._is_time_available(time_obj, bookings) and time_obj > now_baku()
                 
                 button_text = f"{'✅' if is_available else '❌'} {time_str}"
                 keyboard.append([InlineKeyboardButton(
